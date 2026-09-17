@@ -72,4 +72,9 @@ model Connection {
 
   userA User @relation("ConnectionUserA", fields: [userAId], references: [id], onDelete: Cascade)
   userB User @relation("ConnectionUserB", fields: [userBId], references: [id], onDelete: Cascade)
+
+  // userAId/userBId são sempre gravados em ordem canônica (menor id primeiro),
+  // então essa constraint bloqueia duas pessoas se conectarem 2x mesmo se
+  // escanearem uma a outra ao mesmo tempo (ver src/routes/scan.ts).
+  @@unique([userAId, userBId])
 }

@@ -10,6 +10,7 @@ import {
   signToken,
   verifyPassword,
 } from "../auth";
+import { asyncHandler } from "../asyncHandler";
 import { prisma } from "../prisma";
 import { progressToNext } from "../rank";
 
@@ -57,7 +58,7 @@ const registerSchema = z
     }
   });
 
-authRouter.post("/register", async (req, res) => {
+authRouter.post("/register", asyncHandler(async (req, res) => {
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Dados inválidos" });
@@ -87,14 +88,14 @@ authRouter.post("/register", async (req, res) => {
   const token = signToken({ userId: user.id, role: user.role });
   setAuthCookie(res, token);
   res.status(201).json(serializeUser(user));
-});
+}));
 
 const loginSchema = z.object({
   email: z.string().email("E-mail inválido"),
   password: z.string().min(1, "Informe a senha"),
 });
 
-authRouter.post("/login", loginLimiter, async (req, res) => {
+authRouter.post("/login", loginLimiter, asyncHandler(async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Dados inválidos" });
@@ -115,18 +116,18 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
   const token = signToken({ userId: user.id, role: user.role });
   setAuthCookie(res, token);
   res.json(serializeUser(user));
-});
+}));
 
 authRouter.post("/logout", (_req, res) => {
   clearAuthCookie(res);
   res.json({ ok: true });
 });
 
-authRouter.get("/me", requireAuth, async (req, res) => {
+authRouter.get("/me", requireAuth, asyncHandler(async (req, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.userId } });
   if (!user) {
     clearAuthCookie(res);
     return res.status(401).json({ error: "Não autenticado" });
   }
   res.json(serializeUser(user));
-});
+}));

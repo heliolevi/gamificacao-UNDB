@@ -1,5 +1,6 @@
 import { User } from "@prisma/client";
 import { Router } from "express";
+import { asyncHandler } from "../asyncHandler";
 import { requireAdmin, requireAuth } from "../auth";
 import { prisma } from "../prisma";
 import { progressToNext } from "../rank";
@@ -21,7 +22,7 @@ function serializeUser(u: User, stats?: { presences: number; connections: number
   };
 }
 
-usersRouter.get("/:id", requireAuth, async (req, res) => {
+usersRouter.get("/:id", requireAuth, asyncHandler(async (req, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.params.id } });
   if (!user) return res.status(404).json({ error: "Usuário não encontrado" });
 
@@ -31,9 +32,9 @@ usersRouter.get("/:id", requireAuth, async (req, res) => {
   ]);
 
   res.json(serializeUser(user, { presences, connections }));
-});
+}));
 
-usersRouter.get("/", requireAuth, requireAdmin, async (_req, res) => {
+usersRouter.get("/", requireAuth, requireAdmin, asyncHandler(async (_req, res) => {
   const users = await prisma.user.findMany();
   res.json(users.map((u) => serializeUser(u)));
-});
+}));
