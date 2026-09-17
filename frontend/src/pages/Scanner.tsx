@@ -1,19 +1,19 @@
 import { Html5QrcodeScanner } from "html5-qrcode";
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { api, getStoredUserId } from "../api";
+import { api } from "../api";
+import { useAuth } from "../context/AuthContext";
 
 type ToastState = { type: "ok" | "err"; message: string } | null;
 
 export function Scanner() {
-  const myId = getStoredUserId();
+  const { user } = useAuth();
   const [toast, setToast] = useState<ToastState>(null);
   const [busy, setBusy] = useState(false);
   const scannerRef = useRef<Html5QrcodeScanner | null>(null);
   const busyRef = useRef(false);
 
   useEffect(() => {
-    if (!myId) return;
+    if (!user) return;
 
     const scanner = new Html5QrcodeScanner(
       "qr-reader",
@@ -33,21 +33,21 @@ export function Scanner() {
       scanner.clear().catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myId]);
+  }, [user?.id]);
 
   async function onDecoded(payload: string) {
-    if (busyRef.current || !myId) return;
+    if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
 
     try {
       if (payload.startsWith("ACT:")) {
         const activityId = payload.slice(4);
-        const result = await api.scanPresence({ userId: myId, activityId });
+        const result = await api.scanPresence({ activityId });
         setToast({ type: "ok", message: result.message });
       } else if (payload.startsWith("USER:")) {
         const scannedId = payload.slice(5);
-        const result = await api.scanNetwork({ scannerId: myId, scannedId });
+        const result = await api.scanNetwork({ scannedId });
         setToast({ type: "ok", message: result.message });
       } else {
         setToast({ type: "err", message: "QR Code não reconhecido pelo IT WORKS." });
@@ -61,18 +61,6 @@ export function Scanner() {
         setBusy(false);
       }, 1500);
     }
-  }
-
-  if (!myId) {
-    return (
-      <div className="panel glow-magenta" style={{ maxWidth: 480, margin: "60px auto", textAlign: "center" }}>
-        <h2>Crie seu perfil primeiro</h2>
-        <p>Você precisa de um perfil (e QR Code) antes de usar o scanner.</p>
-        <Link to="/cadastro" className="btn">
-          Criar perfil
-        </Link>
-      </div>
-    );
   }
 
   return (

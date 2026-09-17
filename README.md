@@ -21,24 +21,48 @@ Cada pasta é um projeto Node independente, com seu próprio `package.json`.
 
 ## Como rodar localmente
 
-Pré-requisitos: Node.js 18+ instalado.
+Pré-requisitos: Node.js 20+ instalado e um banco Postgres (recomendado: conta
+grátis no [Neon](https://neon.tech), sem cartão de crédito).
+
+### 0. Banco de dados (uma vez só)
+
+1. Crie uma conta no [neon.tech](https://neon.tech) (dá pra usar login do GitHub)
+2. Crie um projeto novo (ex: `itworks`) — o Neon te dá uma connection string tipo
+   `postgresql://usuario:senha@ep-xxxx.aws.neon.tech/neondb?sslmode=require`
+3. Copie `backend/.env.example` para `backend/.env` e cole essa string real em
+   `DATABASE_URL`. Aproveite pra trocar o `JWT_SECRET` e as credenciais do
+   admin (`ADMIN_EMAIL`/`ADMIN_PASSWORD`) nesse mesmo arquivo.
+4. `backend/.env` já está no `.gitignore` — nunca commite esse arquivo.
+
+### Opção rápida: backend + frontend juntos
+
+Na raiz do projeto:
+
+```bash
+npm install          # instala o concurrently (só a raiz)
+npm run install:all  # instala as dependências do backend e do frontend
+cd backend && npm run migrate  # cria as tabelas no Postgres (só na primeira vez)
+cd .. && npm run seed          # cria as atividades de exemplo e a conta admin
+npm run dev                    # sobe a API (:3333) e o app (:5173) juntos, num terminal só
+```
+
+Abra `http://localhost:5173`. Os logs do backend e do frontend aparecem
+coloridos e prefixados (`backend` / `frontend`) no mesmo terminal.
+
+### Rodando cada parte separadamente
 
 ### 1. Backend (API)
 
 ```bash
 cd backend
 npm install
-npm run seed   # cria algumas atividades de exemplo (palestras, workshop...)
-npm run dev    # inicia a API em http://localhost:3333
+npm run migrate  # cria as tabelas no Postgres (só precisa rodar de novo se o schema mudar)
+npm run seed     # cria algumas atividades de exemplo (palestras, workshop...) e a conta admin
+npm run dev      # inicia a API em http://localhost:3333
 ```
 
-> Sempre rode `npm run seed` **antes** de iniciar o servidor (ou reinicie o
-> `npm run dev` depois de rodar o seed), pois o servidor mantém os dados em
-> memória durante a execução.
-
-A API guarda os dados em `backend/data/db.json` (criado automaticamente).
-Isso é só para o protótipo funcionar sem precisar de banco externo — veja a
-seção "Evoluindo para produção" abaixo para trocar por Postgres/MongoDB.
+Os dados ficam no Postgres configurado em `backend/.env` (`DATABASE_URL`), via
+[Prisma](https://www.prisma.io/) (`backend/prisma/schema.prisma`).
 
 ### 2. Frontend (App)
 
@@ -55,14 +79,16 @@ encaminhar chamadas `/api/*` para o backend (porta 3333).
 
 ### 3. Fluxo de teste rápido
 
-1. Acesse `/admin`, crie uma atividade (ex: "Palestra de Abertura") e deixe
-   o QR Code dela projetado na tela — é esse QR que fica no telão do evento.
-2. Em outro navegador/aba (ou celular na mesma rede), acesse `/cadastro` e
-   crie um perfil.
+1. Acesse `http://localhost:5173`, faça login com a conta admin (a que o
+   `npm run seed` criou/confirmou) e vá em `/admin`. Crie uma atividade (ex:
+   "Palestra de Abertura") e deixe o QR Code dela projetado na tela — é esse
+   QR que fica no telão do evento.
+2. Em outro navegador/aba (ou celular na mesma rede), acesse `/` e crie uma
+   conta pela aba "Criar conta".
 3. Vá em `/perfil` para ver seu QR Code pessoal.
 4. Vá em `/scanner` e escaneie o QR da atividade projetada → ganha XP de
    presença.
-5. Crie um segundo perfil e escaneie o QR de perfil de outro participante
+5. Crie uma segunda conta e escaneie o QR de perfil de outro participante
    em `/scanner` → ambos ganham XP de networking (com bônus se forem de
    curso/período diferentes).
 6. Acompanhe `/ranking` atualizando em tempo real (polling automático).
@@ -90,28 +116,21 @@ encaminhar chamadas `/api/*` para o backend (porta 3333).
   `qrcode.react` para gerar QR Codes e `html5-qrcode` para ler QR Codes pela
   câmera. Tema visual 100% em CSS puro (`frontend/src/styles/global.css`).
 - **Backend**: Node.js + TypeScript + Express, validação de entrada com
-  `zod`, IDs únicos com `uuid`.
-- **Dados**: camada de repositório simples em `backend/src/db.ts` que lê e
-  grava um arquivo JSON. Todas as rotas passam por essa camada, então trocar
-  o storage por um banco de verdade não exige mexer nas rotas.
+  `zod`, autenticação por login (e-mail/senha) com JWT em cookie httpOnly e
+  senha com hash (`bcryptjs`) — ver `backend/src/auth.ts` e
+  `backend/src/routes/auth.ts`.
+- **Dados**: PostgreSQL (hospedado no [Neon](https://neon.tech)) via
+  [Prisma](https://www.prisma.io/) (`backend/prisma/schema.prisma`,
+  `backend/src/prisma.ts`). Presença e networking rodam em transações
+  (`prisma.$transaction`) para não haver corrida entre dois scans
+  simultâneos.
 
 ### Evoluindo para produção
 
-Para um evento real, vale trocar o `db.ts` baseado em arquivo por um banco
-de verdade:
-
-- **PostgreSQL** com [Prisma](https://www.prisma.io/) — bom encaixe pelo
-  modelo relacional (usuários, atividades, presenças, conexões).
-- **MongoDB** com Mongoose — se preferir documentos.
-
-Como toda leitura/escrita passa pelas funções `readDb`/`mutate` de
-`db.ts`, a troca fica isolada nesse arquivo (e nas rotas que hoje usam
-`readDb()` diretamente).
-
-Outros pontos para produção:
-- Autenticação leve (ex: o próprio QR Code como "sessão" já dá para o MVP,
-  mas para produção vale um login simples ou vincular ao e-mail/matrícula).
-- Rate limiting nas rotas de scan.
+Pontos que ainda valem a pena revisar antes do evento de verdade:
+- Rate limiting em mais rotas além do login (hoje só `/api/auth/login` tem).
 - Deploy: backend em qualquer serviço Node (Railway, Render, Fly.io...),
   frontend como site estático (Vercel, Netlify) apontando para a URL da
-  API.
+  API. O Neon já funciona hospedado, então o banco não precisa mudar.
+- Trocar a senha da conta admin criada pelo seed (`ADMIN_EMAIL`/
+  `ADMIN_PASSWORD` em `backend/.env`) antes de ir pra produção.

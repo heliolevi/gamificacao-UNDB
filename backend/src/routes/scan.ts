@@ -1,62 +1,69 @@
+import { Prisma } from "@prisma/client";
 import { Router } from "express";
-import { v4 as uuid } from "uuid";
 import { z } from "zod";
-import { mutate, readDb } from "../db";
+import { requireAuth } from "../auth";
+import { prisma } from "../prisma";
 import { progressToNext } from "../rank";
 
 export const scanRouter = Router();
 
+class HttpError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
 const presenceSchema = z.object({
-  userId: z.string().uuid(),
   activityId: z.string().uuid(),
 });
 
 // Pilar 1: presenca. Aluno escaneia o QR Code projetado no telao ao final
 // de cada atividade e ganha o XP daquela atividade. Bloqueia pontuar 2x
-// na mesma atividade.
-scanRouter.post("/presence", (req, res) => {
+// na mesma atividade (garantido também por uma constraint unique no banco).
+scanRouter.post("/presence", requireAuth, async (req, res) => {
   const parsed = presenceSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "QR inválido ou dados incompletos" });
   }
-  const { userId, activityId } = parsed.data;
+  const { activityId } = parsed.data;
+  const userId = req.userId!;
 
-  const db = readDb();
-  const user = db.users.find((u) => u.id === userId);
-  const activity = db.activities.find((a) => a.id === activityId);
-  if (!user) return res.status(404).json({ error: "Usuário não encontrado" });
-  if (!activity) return res.status(404).json({ error: "Atividade não encontrada" });
+  try {
+    const { user, activity } = await prisma.$transaction(async (tx) => {
+      const activity = await tx.activity.findUnique({ where: { id: activityId } });
+      if (!activity) throw new HttpError(404, "Atividade não encontrada");
 
-  const already = db.presenceScans.some(
-    (s) => s.userId === userId && s.activityId === activityId
-  );
-  if (already) {
-    return res.status(409).json({ error: `Você já pontuou em "${activity.name}"` });
-  }
+      const already = await tx.presenceScan.findUnique({
+        where: { userId_activityId: { userId, activityId } },
+      });
+      if (already) throw new HttpError(409, `Você já pontuou em "${activity.name}"`);
 
-  const result = mutate((db2) => {
-    const u = db2.users.find((x) => x.id === userId)!;
-    u.xp += activity.points;
-    db2.presenceScans.push({
-      id: uuid(),
-      userId,
-      activityId,
-      points: activity.points,
-      createdAt: new Date().toISOString(),
+      await tx.presenceScan.create({ data: { userId, activityId, points: activity.points } });
+      const user = await tx.user.update({
+        where: { id: userId },
+        data: { xp: { increment: activity.points } },
+      });
+
+      return { user, activity };
     });
-    return u;
-  });
 
-  const { pct, current } = progressToNext(result.xp);
-  res.json({
-    message: `+${activity.points} XP por participar de "${activity.name}"!`,
-    pointsEarned: activity.points,
-    user: { ...result, rank: current.name, rankProgressPct: pct },
-  });
+    const { pct, current } = progressToNext(user.xp);
+    const { passwordHash: _passwordHash, ...safeUser } = user;
+    res.json({
+      message: `+${activity.points} XP por participar de "${activity.name}"!`,
+      pointsEarned: activity.points,
+      user: { ...safeUser, rank: current.name, rankProgressPct: pct },
+    });
+  } catch (err) {
+    if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      return res.status(409).json({ error: "Você já pontuou nessa atividade" });
+    }
+    throw err;
+  }
 });
 
 const networkSchema = z.object({
-  scannerId: z.string().uuid(),
   scannedId: z.string().uuid(),
 });
 
@@ -66,68 +73,74 @@ const BONUS_DIFF_PERIOD = 10;
 
 // Pilar 2: networking. Um aluno escaneia o QR do outro; os dois ganham XP.
 // Bonus se forem de periodos ou cursos/areas diferentes (quebra bolhas).
-scanRouter.post("/network", (req, res) => {
+scanRouter.post("/network", requireAuth, async (req, res) => {
   const parsed = networkSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "QR inválido ou dados incompletos" });
   }
-  const { scannerId, scannedId } = parsed.data;
+  const { scannedId } = parsed.data;
+  const scannerId = req.userId!;
 
   if (scannerId === scannedId) {
     return res.status(400).json({ error: "Você não pode escanear o seu próprio QR Code" });
   }
 
-  const db = readDb();
-  const scanner = db.users.find((u) => u.id === scannerId);
-  const scanned = db.users.find((u) => u.id === scannedId);
-  if (!scanner) return res.status(404).json({ error: "Usuário (scanner) não encontrado" });
-  if (!scanned) return res.status(404).json({ error: "Usuário (escaneado) não encontrado" });
+  try {
+    const { scanner, points, bonusReason, scanned } = await prisma.$transaction(async (tx) => {
+      const scanner = await tx.user.findUnique({ where: { id: scannerId } });
+      const scanned = await tx.user.findUnique({ where: { id: scannedId } });
+      if (!scanner) throw new HttpError(404, "Usuário (scanner) não encontrado");
+      if (!scanned) throw new HttpError(404, "Usuário (escaneado) não encontrado");
 
-  const alreadyConnected = db.connections.some(
-    (c) =>
-      (c.userAId === scannerId && c.userBId === scannedId) ||
-      (c.userAId === scannedId && c.userBId === scannerId)
-  );
-  if (alreadyConnected) {
-    return res.status(409).json({ error: `Você já se conectou com ${scanned.name}` });
-  }
+      const alreadyConnected = await tx.connection.findFirst({
+        where: {
+          OR: [
+            { userAId: scannerId, userBId: scannedId },
+            { userAId: scannedId, userBId: scannerId },
+          ],
+        },
+      });
+      if (alreadyConnected) {
+        throw new HttpError(409, `Você já se conectou com ${scanned.name}`);
+      }
 
-  let points = BASE_NETWORK_XP;
-  const bonusReason: string[] = [];
-  if (scanner.course !== scanned.course) {
-    points += BONUS_DIFF_COURSE;
-    bonusReason.push("cursos diferentes");
-  }
-  if (scanner.period !== scanned.period) {
-    points += BONUS_DIFF_PERIOD;
-    bonusReason.push("períodos diferentes");
-  }
+      let points = BASE_NETWORK_XP;
+      const bonusReason: string[] = [];
+      if (scanner.course !== scanned.course) {
+        points += BONUS_DIFF_COURSE;
+        bonusReason.push("cursos diferentes");
+      }
+      if (scanner.period !== scanned.period) {
+        points += BONUS_DIFF_PERIOD;
+        bonusReason.push("períodos diferentes");
+      }
 
-  const result = mutate((db2) => {
-    const a = db2.users.find((x) => x.id === scannerId)!;
-    const b = db2.users.find((x) => x.id === scannedId)!;
-    a.xp += points;
-    b.xp += points;
-    db2.connections.push({
-      id: uuid(),
-      userAId: scannerId,
-      userBId: scannedId,
-      points,
-      bonusReason,
-      createdAt: new Date().toISOString(),
+      await tx.connection.create({
+        data: { userAId: scannerId, userBId: scannedId, points, bonusReason },
+      });
+      const updatedScanner = await tx.user.update({
+        where: { id: scannerId },
+        data: { xp: { increment: points } },
+      });
+      await tx.user.update({ where: { id: scannedId }, data: { xp: { increment: points } } });
+
+      return { scanner: updatedScanner, points, bonusReason, scanned };
     });
-    return { a, b };
-  });
 
-  const { pct, current } = progressToNext(result.a.xp);
-  res.json({
-    message:
-      bonusReason.length > 0
-        ? `+${points} XP! Conexão com bônus (${bonusReason.join(" e ")}) com ${scanned.name}!`
-        : `+${points} XP por se conectar com ${scanned.name}!`,
-    pointsEarned: points,
-    bonusReason,
-    connectedWith: { id: scanned.id, name: scanned.name },
-    user: { ...result.a, rank: current.name, rankProgressPct: pct },
-  });
+    const { pct, current } = progressToNext(scanner.xp);
+    const { passwordHash: _passwordHash, ...safeScanner } = scanner;
+    res.json({
+      message:
+        bonusReason.length > 0
+          ? `+${points} XP! Conexão com bônus (${bonusReason.join(" e ")}) com ${scanned.name}!`
+          : `+${points} XP por se conectar com ${scanned.name}!`,
+      pointsEarned: points,
+      bonusReason,
+      connectedWith: { id: scanned.id, name: scanned.name },
+      user: { ...safeScanner, rank: current.name, rankProgressPct: pct },
+    });
+  } catch (err) {
+    if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
 });
