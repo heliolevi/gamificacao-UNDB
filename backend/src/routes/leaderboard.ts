@@ -1,11 +1,12 @@
 import { Router } from "express";
+import { asyncHandler } from "../asyncHandler";
 import { requireAuth } from "../auth";
 import { prisma } from "../prisma";
 import { progressToNext } from "../rank";
 
 export const leaderboardRouter = Router();
 
-leaderboardRouter.get("/", requireAuth, async (req, res) => {
+leaderboardRouter.get("/", requireAuth, asyncHandler(async (req, res) => {
   const limit = req.query.limit ? Number(req.query.limit) : 50;
 
   const users = await prisma.user.findMany({
@@ -29,4 +30,4 @@ leaderboardRouter.get("/", requireAuth, async (req, res) => {
   });
 
   res.json(ranked);
-});
+}));

@@ -2,14 +2,16 @@ import { useEffect, useState } from "react";
 import { LeaderboardEntry, api } from "../api";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
+const PREVIEW_COUNT = 7;
 
 export function Leaderboard() {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAll, setShowAll] = useState(false);
 
   async function load() {
     try {
-      const data = await api.getLeaderboard(50);
+      const data = await api.getLeaderboard(1000);
       setEntries(data);
     } finally {
       setLoading(false);
@@ -23,7 +25,9 @@ export function Leaderboard() {
   }, []);
 
   const top3 = entries.slice(0, 3);
-  const rest = entries.slice(3);
+  const restAll = entries.slice(3);
+  const rest = showAll ? restAll : restAll.slice(0, PREVIEW_COUNT);
+  const hiddenCount = restAll.length - rest.length;
   const podiumOrder = [top3[1], top3[0], top3[2]]; // 2nd, 1st, 3rd for visual podium
 
   return (
@@ -73,6 +77,14 @@ export function Leaderboard() {
               <div style={{ fontFamily: "var(--font-mono)", color: "var(--neon-cyan)" }}>{entry.xp} XP</div>
             </div>
           ))}
+        </div>
+      )}
+
+      {restAll.length > PREVIEW_COUNT && (
+        <div style={{ textAlign: "center", marginTop: 20 }}>
+          <button className="btn btn-outline" onClick={() => setShowAll((v) => !v)}>
+            {showAll ? "Mostrar menos" : `Ver ranking completo (+${hiddenCount})`}
+          </button>
         </div>
       )}
     </div>
