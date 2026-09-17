@@ -1,23 +1,21 @@
+import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { QRCodeSVG } from "qrcode.react";
-import { ApiUser, api, getStoredUserId } from "../api";
+import { ApiUser, api } from "../api";
 import { RankBadge } from "../components/RankBadge";
 import { XPBar } from "../components/XPBar";
+import { useAuth } from "../context/AuthContext";
 
 export function Profile() {
+  const { user: authUser } = useAuth();
   const [user, setUser] = useState<ApiUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
-    const id = getStoredUserId();
-    if (!id) {
-      setLoading(false);
-      return;
-    }
+    if (!authUser) return;
     try {
-      const u = await api.getUser(id);
+      const u = await api.getUser(authUser.id);
       setUser(u);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao carregar perfil");
@@ -30,22 +28,11 @@ export function Profile() {
     load();
     const interval = setInterval(load, 8000);
     return () => clearInterval(interval);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUser?.id]);
 
-  if (loading) {
+  if (loading || !user) {
     return <p style={{ textAlign: "center", marginTop: 60 }}>Carregando…</p>;
-  }
-
-  if (!user) {
-    return (
-      <div className="panel glow-magenta" style={{ maxWidth: 480, margin: "60px auto", textAlign: "center" }}>
-        <h2>Nenhum perfil encontrado</h2>
-        <p>Você ainda não criou seu personagem neste dispositivo.</p>
-        <Link to="/cadastro" className="btn">
-          Criar perfil
-        </Link>
-      </div>
-    );
   }
 
   return (
@@ -62,7 +49,8 @@ export function Profile() {
           <div>
             <h1 style={{ fontSize: "1.6rem" }}>{user.name}</h1>
             <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.85rem" }}>
-              {user.course} · {user.period}
+              {user.course}
+              {user.period ? ` · ${user.period}` : ""}
             </p>
             <div style={{ margin: "14px 0" }}>
               <RankBadge rank={user.rank} color={user.rankColor} icon={user.rankIcon} />

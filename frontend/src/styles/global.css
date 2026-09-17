@@ -255,6 +255,8 @@ a {
 }
 
 .field input[type="text"],
+.field input[type="password"],
+.field input[type="email"],
 .field select {
   width: 100%;
   background: rgba(5, 5, 20, 0.6);
@@ -269,9 +271,45 @@ a {
 }
 
 .field input[type="text"]:focus,
+.field input[type="password"]:focus,
+.field input[type="email"]:focus,
 .field select:focus {
   border-color: var(--neon-cyan);
   box-shadow: 0 0 14px rgba(78, 225, 255, 0.3);
+}
+
+.field input[type="password"] {
+  letter-spacing: 0.15em;
+}
+
+.password-field {
+  position: relative;
+}
+
+.password-field input {
+  padding-right: 46px !important;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 8px 10px;
+  border-radius: 6px;
+  transition: color 0.15s ease;
+}
+
+.password-toggle:hover {
+  color: var(--neon-cyan);
 }
 
 .chip-select {
@@ -382,6 +420,34 @@ a {
   margin: 0 auto 34px;
   font-size: 1.15rem;
   color: var(--text-1);
+}
+
+.partner-logos {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 36px;
+  flex-wrap: wrap;
+  margin: 34px 0 0;
+}
+
+.partner-logos img {
+  height: 40px;
+  max-width: 150px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.95))
+    drop-shadow(0 0 10px rgba(255, 255, 255, 0.85))
+    drop-shadow(0 0 22px rgba(255, 255, 255, 0.6))
+    drop-shadow(0 6px 14px rgba(0, 0, 0, 0.5));
+  transition: filter 0.2s ease, transform 0.2s ease;
+}
+
+.partner-logos img:hover {
+  transform: translateY(-2px);
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 1))
+    drop-shadow(0 0 14px rgba(255, 255, 255, 0.95))
+    drop-shadow(0 0 28px rgba(255, 255, 255, 0.75))
+    drop-shadow(0 6px 16px rgba(0, 0, 0, 0.55));
 }
 
 .hero-actions {
@@ -582,6 +648,40 @@ a {
   height: 22px;
   background: linear-gradient(180deg, var(--neon-cyan), var(--neon-purple));
   border-radius: 4px;
+}
+
+/* ---------- Auth (login / cadastro) ---------- */
+.auth-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.auth-tab {
+  flex: 1;
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(5, 5, 20, 0.4);
+  color: var(--text-1);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.auth-tab:hover {
+  color: var(--text-0);
+  border-color: var(--neon-cyan);
+}
+
+.auth-tab.active {
+  background: linear-gradient(120deg, rgba(78, 225, 255, 0.25), rgba(157, 92, 255, 0.25));
+  border-color: var(--neon-cyan);
+  color: var(--text-0);
+  box-shadow: 0 0 14px rgba(78, 225, 255, 0.25);
 }
 
 .footer-note {

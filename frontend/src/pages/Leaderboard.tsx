@@ -63,7 +63,8 @@ export function Leaderboard() {
               <div>
                 <div style={{ fontFamily: "var(--font-display)", fontSize: "0.95rem" }}>{entry.name}</div>
                 <div className="meta">
-                  {entry.course} · {entry.period}
+                  {entry.course}
+                  {entry.period ? ` · ${entry.period}` : ""}
                 </div>
               </div>
               <div style={{ color: entry.rankColor, fontFamily: "var(--font-mono)", fontSize: "0.8rem" }}>

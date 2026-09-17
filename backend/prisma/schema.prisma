@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  participante
+  admin
+}
+
+enum ActivityType {
+  palestra
+  workshop
+  mesa_redonda
+  keynote
+  oficina
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(participante)
+  isStudent    Boolean  @default(true)
+  period       String   @default("")
+  course       String
+  interests    String[] @default([])
+  xp           Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  presenceScans    PresenceScan[]
+  connectionsAsA   Connection[]   @relation("ConnectionUserA")
+  connectionsAsB   Connection[]   @relation("ConnectionUserB")
+}
+
+model Activity {
+  id        String       @id @default(uuid())
+  name      String
+  type      ActivityType
+  points    Int
+  createdAt DateTime     @default(now())
+
+  presenceScans PresenceScan[]
+}
+
+model PresenceScan {
+  id         String   @id @default(uuid())
+  userId     String
+  activityId String
+  points     Int
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, activityId])
+}
+
+model Connection {
+  id          String   @id @default(uuid())
+  userAId     String
+  userBId     String
+  points      Int
+  bonusReason String[] @default([])
+  createdAt   DateTime @default(now())
+
+  userA User @relation("ConnectionUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB User @relation("ConnectionUserB", fields: [userBId], references: [id], onDelete: Cascade)
+}

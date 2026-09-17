@@ -3,6 +3,7 @@ const BASE = "/api";
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     ...options,
   });
   const data = await res.json().catch(() => ({}));
@@ -12,9 +13,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return data as T;
 }
 
+export type UserRole = "participante" | "admin";
+
 export interface ApiUser {
   id: string;
   name: string;
+  email: string;
+  role: UserRole;
+  isStudent: boolean;
   period: string;
   course: string;
   interests: string[];
@@ -49,8 +55,22 @@ export interface LeaderboardEntry {
 }
 
 export const api = {
-  createUser: (payload: { name: string; period: string; course: string; interests: string[] }) =>
-    request<ApiUser>("/users", { method: "POST", body: JSON.stringify(payload) }),
+  register: (payload: {
+    name: string;
+    email: string;
+    password: string;
+    isStudent: boolean;
+    period?: string;
+    course: string;
+    interests: string[];
+  }) => request<ApiUser>("/auth/register", { method: "POST", body: JSON.stringify(payload) }),
+
+  login: (payload: { email: string; password: string }) =>
+    request<ApiUser>("/auth/login", { method: "POST", body: JSON.stringify(payload) }),
+
+  logout: () => request<{ ok: true }>("/auth/logout", { method: "POST" }),
+
+  me: () => request<ApiUser>("/auth/me"),
 
   getUser: (id: string) => request<ApiUser>(`/users/${id}`),
 
@@ -61,13 +81,13 @@ export const api = {
   createActivity: (payload: { name: string; type: string; points?: number }) =>
     request<ApiActivity>("/activities", { method: "POST", body: JSON.stringify(payload) }),
 
-  scanPresence: (payload: { userId: string; activityId: string }) =>
+  scanPresence: (payload: { activityId: string }) =>
     request<{ message: string; pointsEarned: number; user: ApiUser }>("/scan/presence", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
 
-  scanNetwork: (payload: { scannerId: string; scannedId: string }) =>
+  scanNetwork: (payload: { scannedId: string }) =>
     request<{
       message: string;
       pointsEarned: number;
@@ -76,29 +96,3 @@ export const api = {
       user: ApiUser;
     }>("/scan/network", { method: "POST", body: JSON.stringify(payload) }),
 };
-
-const STORAGE_KEY = "itworks_user_id";
-
-export function getStoredUserId(): string | null {
-  try {
-    return localStorage.getItem(STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function storeUserId(id: string) {
-  try {
-    localStorage.setItem(STORAGE_KEY, id);
-  } catch {
-    /* ignore */
-  }
-}
-
-export function clearStoredUserId() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    /* ignore */
-  }
-}
